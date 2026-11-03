@@ -1,0 +1,26 @@
+# colcon / ROS 2 build artifacts
+build/
+install/
+log/
+
+# local tooling and scratch data (not part of the simulator)
+dsh-bridge/
+.scratch/
+
+# python
+__pycache__/
+*.py[cod]
+
+# editors
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/extensions.json
+.idea/
+*.swp
+
+# 桥接自动维护的跨通道共享记忆
+AGENTS.local.md
+
+# RL 运行时依赖（5.3 GB，不入库）
+.pylibs/

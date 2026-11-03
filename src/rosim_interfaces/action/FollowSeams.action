@@ -1,0 +1,39 @@
+# Plan and execute several seams as ONE continuous trajectory.
+#
+# Each seam is merged from its edges, approached from the previous seam's end
+# state (OMPL free-space transfer) and followed without stopping. A seam that
+# cannot be planned is skipped, recorded, and reported in the result — the batch
+# continues with the next one.
+
+string model_id
+rosim_interfaces/SeamSpec[] seams
+
+uint8 orientation_mode
+geometry_msgs/Quaternion fixed_orientation   # used when orientation_mode = 1 (FIXED)
+float64 tangent_tilt
+float64 tool_offset
+float64 approach_distance
+float64 max_waypoint_spacing
+float64 corner_max_deviation
+float64 corner_threshold_deg
+float64 corner_orient_window
+uint8 TIME_PROFILE_TOTG=0        # trapezoidal velocity (default)
+uint8 TIME_PROFILE_SCURVE=1      # jerk-limited (double-S) via Ruckig
+uint8 time_profile
+bool seam_constant_speed         # keep TCP speed constant on the seam itself
+float64 weld_speed
+float64 seam_dwell              # pause at the seam start/end for arc strike/extinguish [s]               # target seam speed [m/s]; 0 = keep the profile median               # 0 = TOTG, 1 = 双S      # +/- window used to spread the corner turn [m]; 0 -> 0.02
+---
+bool success                  # at least one seam was executed
+uint8 executed
+uint8 failed
+uint8[] failed_indices        # indices into the goal's seams array
+string[] failed_messages
+string message
+trajectory_msgs/JointTrajectory trajectory
+---
+float32 progress              # 0..1 across the whole batch
+uint8 seam_index              # seam currently being planned / executed
+uint8 seam_count
+string phase                  # resolving / planning / following / executing / done
+string note                   # operator notice (corner plan / warnings), may be empty
