@@ -1,56 +1,98 @@
-# rosim — 六轴工业机器人随边作业运动学仿真
+# smartweld — 六轴工业机器人焊缝随边作业仿真
 
-STEP 工件导入 → 在浏览器里建焊缝 → 6 轴 MOTOMAN-GP12 + 第 7 轴直线导轨协同规划
-无碰撞路径 → 沿焊缝连续执行，支持多条焊缝一次规划、连续走完。
+> 把工件 STEP 模型丢进场景，在浏览器里点出焊缝，让 6 轴工业机器人（MOTOMAN-GP12）
+> 连同第 7 轴直线导轨一起，自动规划出**无碰撞、可连续执行**的焊接轨迹。
 
-- 完整设计、目录说明、协议与算法细节：**[src/README.md](src/README.md)**
-- 代码地图（哪个功能在哪个文件）：**[docs/code_map.md](docs/code_map.md)**
-- OMPL vs RL 对比数据：**[docs/rl_bench.md](docs/rl_bench.md)**
-- 落地路线与里程碑：**[docs/roadmap.md](docs/roadmap.md)**
-- 换台电脑装环境（依赖+版本+坑）：**[docs/install.md](docs/install.md)**
-- 多主机协作（笔记本网关 + 主力机算力）：**[docs/multi_host.md](docs/multi_host.md)**
-- 另一台机器（笔记本）的环境差异与坑：**[docs/laptop_env.md](docs/laptop_env.md)**
-- 代码位于 `src/`（7 个 ROS 2 包）
-- 依赖：ROS 2 Humble、MoveIt2、OpenCASCADE 7.5、VTK 9.1、Qt5（仅旧版桌面 GUI）
+![status](https://img.shields.io/badge/ROS2-Humble-blue) ![moveit](https://img.shields.io/badge/MoveIt-2.5.x-green) ![cpp](https://img.shields.io/badge/C%2B%2B-17-orange)
 
-## 编译
+---
 
-```bash
-cd ~/rosim_ws
-source /opt/ros/humble/setup.bash
-source ~/ws_moveit/install/setup.bash      # MoveIt2 源码 overlay
-colcon build --symlink-install
+## 它能做什么
+
+| 能力 | 说明 |
+| --- | --- |
+| **STEP 工件导入** | OpenCASCADE 解析 → 三角化 → 重建碰撞体，放进可配置的工作区域 |
+| **浏览器建焊缝** | WebSocket + 前端点选，把拓扑边变成可执行的焊接路径（支持多条连续） |
+| **7 轴协同规划** | 6 轴臂 + 1 轴直线导轨构成复合规划组，OMPL 在这个组合空间里求解 |
+| **三段式运动** | 接近（规划）→ 沿缝（确定性采样 + 时间参数化）→ 退刀（规划） |
+| **三类规划器可选** | 纯 OMPL / 纯 RL / **RL 初解 + OMPL 修复**（混合），一行参数切换 |
+| **可观测** | 每次规划都会说明走了哪个分支、为什么（`pre-approach: ok (手臂位移 2.14 rad 超出 RL 范围，整段 OMPL)`）|
+
+## 架构
+
+```
+        ┌────────────── 浏览器（调试页 / 生产页）─────────────┐
+        │  点选焊缝 · 看实时渲染 · 下发指令（WebSocket :8765） │
+        └───────────────────────┬────────────────────────────┘
+                                │ JSON / JPEG 帧
+        ┌───────────────────────▼────────────────────────────┐
+        │  rosim_server      无头渲染 + 协议网关              │
+        │  rosim_planning    OMPL / RL / 混合 三个规划器      │
+        │  rosim_core        STEP 解析 · 碰撞 · 轨迹后处理    │
+        │  rosim_rl          ONNX 策略推理（远程调用 Python） │
+        │  ros2_control      轨迹执行（JTC + mock 硬件）      │
+        └────────────────────────────────────────────────────┘
 ```
 
-## 运行
+## 技术栈
+
+**ROS 2 Humble** · **MoveIt 2.5**（源码构建）· **OMPL 1.7** · OpenCASCADE 7.5 ·
+VTK 9.1 · Qt5 · Eigen · `ros2_control` · **stable-baselines3 / ONNX Runtime**
+（RL 分支）· WebSocket + 原生 Canvas 前端
+
+## 几个有意思的设计取舍
+
+- **规划组是 7 维的**（臂 + 导轨）。不把导轨拆开单独规划，是因为"臂够不着就挪轨道"
+  这种复合约束，交给采样规划器一起解比手工分层更稳。
+- **默认链刻意不用 RL**：实测真实请求里 94% 的直连路径本身无碰撞（直线 3 ms 就够），
+  剩下 6% 需要绕行——而那正是当时策略最不擅长的。RL 作为显式选项保留。
+- **混合规划器的门限修过一次真正的 bug**：原来用「组顺序的 goal 减模型顺序的 vars」，
+  索引整体错位，算出的"位移"与真实无关，导致 RL 分支几乎永不触发。
+  现在按关节名匹配、导轨单列，判据才有物理意义。
+
+## 实测数据
+
+| 场景 | 结果 |
+| --- | --- |
+| 完整焊接链路（导入 → 接近 → 沿缝 → 退刀） | 3/3 成功，37~40 s/工件 |
+| OMPL 自由空间规划 | 中位 **12.4 ms** |
+| 混合规划器（RL 初解 + OMPL 修复） | 接近任务上 RL 分支 0/9 到达 → 闸门正确改走 OMPL |
+
+> 最后一行是**如实记录**：在"焊缝接近"这类大位移重构任务上，当时的 RL 策略
+> 不占优（它的训练分布是障碍密集的短程绕行）。这类负面结果同样写进了仓库。
+
+## 快速开始
 
 ```bash
+# 1) 依赖：ROS 2 Humble + MoveIt 2（源码构建，apt 无 moveit-core）
+#    完整版本矩阵与踩坑：docs/install.md
+# 2) 编译
+source /opt/ros/humble/setup.bash
+source ~/ws_moveit/install/setup.bash
+colcon build --symlink-install
+
+# 3) 运行
 source install/setup.bash
 ros2 launch rosim_server server.launch.py
-# 调试页 http://localhost:8765/    生产页 http://localhost:8765/production
+#   调试页 http://localhost:8765/
+#   生产页 http://localhost:8765/production
 ```
 
-## RL 规划（可选）
+## 目录
 
-接近/退刀段有五种规划器可选：`auto`（默认，= 直线 → OMPL，**不经过 RL**）、
-`line`（笛卡尔直线）、`ompl`（采样规划）、`rl`（策略 + OMPL 整段兜底）、
-`hybrid`（RL 前缀 + OMPL 修尾，实验性）。组合规则见
-[src/README.md §2.1](src/README.md)。
-
-```bash
-./scripts/rl_plan.sh &                      # 策略推理节点（必须先起）
-ros2 service call /rosim_planning/set_planner rosim_interfaces/srv/SetPlanner \
-  "{planner_type: rl}"
+```
+src/            7 个 ROS 2 包（core / planning / server / rl / viewer / description / interfaces）
+rl_a/           RL 训练、场景采样、策略评测
+scripts/        编译、基准、诊断、发布脚本
+docs/           install.md（环境安装）· versions.lock（验证过的版本基线）
+docker/         可选容器环境
 ```
 
-调试页右上「规划器」下拉可切换，旁边「规划演示」按钮直接规划一次并画出路径。
-训练与模型说明见 [docs/code_map.md](docs/code_map.md#3-rl-训练侧rl_a)。
+- 架构与代码细节：**[src/README.md](src/README.md)**
+- 换机器装环境：**[docs/install.md](docs/install.md)**
+- 版本基线：**[docs/versions.lock](docs/versions.lock)**
 
-## 回归
+---
 
-```bash
-# 单边回归（全部边，与基线对比）
-ros2 run rosim_planning edge_regress -- --out /tmp/run.json --compare <baseline.json>
-# 焊缝批量
-ros2 run rosim_planning edge_regress -- --seams "17;22;1,17"
-```
+> 这是展示用镜像仓库：每次提交是一次快照（`sync from private@<sha>`），
+> 聊天记忆、跨机部署配置等内部内容不在此仓库。
