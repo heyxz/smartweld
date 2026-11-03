@@ -24,3 +24,4 @@ AGENTS.local.md
 
 # RL 运行时依赖（5.3 GB，不入库）
 .pylibs/
+.mpl/
