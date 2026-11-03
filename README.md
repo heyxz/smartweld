@@ -5,6 +5,8 @@
 
 ![status](https://img.shields.io/badge/ROS2-Humble-blue) ![moveit](https://img.shields.io/badge/MoveIt-2.5.x-green) ![cpp](https://img.shields.io/badge/C%2B%2B-17-orange)
 
+![界面](docs/images/ui.png)
+
 ---
 
 ## 它能做什么
@@ -63,20 +65,37 @@ VTK 9.1 · Qt5 · Eigen · `ros2_control` · **stable-baselines3 / ONNX Runtime*
 
 ## 快速开始
 
-```bash
-# 1) 依赖：ROS 2 Humble + MoveIt 2（源码构建，apt 无 moveit-core）
-#    完整版本矩阵与踩坑：docs/install.md
-# 2) 编译
-source /opt/ros/humble/setup.bash
-source ~/ws_moveit/install/setup.bash
-colcon build --symlink-install
+**要求**：Ubuntu 22.04（x86_64）+ 约 20 GB 磁盘。ROS 2 Humble 与 MoveIt 2 都会自动装。
 
-# 3) 运行
-source install/setup.bash
-ros2 launch rosim_server server.launch.py
-#   调试页 http://localhost:8765/
-#   生产页 http://localhost:8765/production
+```bash
+git clone https://github.com/heyxz/smartweld.git ~/smartweld
+cd ~/smartweld
+
+./scripts/bootstrap.sh --check     # ① 体检：缺什么会列出来
+./scripts/bootstrap.sh --base      # ② 装 ROS 2 Humble（需要 sudo）
+./scripts/bootstrap.sh --moveit    # ③ 装 MoveIt 2（apt 版，几分钟）
+./scripts/bootstrap.sh --deps      # ④ 装本项目依赖（rosdep）
+./scripts/bootstrap.sh --build     # ⑤ 编译
+./scripts/bootstrap.sh --verify    # ⑥ 冒烟测试：起服务 → 规划一次 → 检查关节状态
 ```
+
+`--verify` 通过后会打印 `✅ 环境可用`，然后打开 **http://localhost:8765/** 就是上面的界面。
+
+<details>
+<summary>想固定用 MoveIt 2.5.9 源码版（编译 30~60 分钟）</summary>
+
+```bash
+./scripts/bootstrap.sh --moveit --from-source
+```
+</details>
+
+<details>
+<summary>遇到问题</summary>
+
+- 不是 Ubuntu 22.04 → 用 `docker/Dockerfile`，或装 22.04 虚拟机
+- `python3` 不是 3.10 → Humble 的 `rclpy` 只支持 3.10
+- 详细版本矩阵与踩坑：**[docs/install.md](docs/install.md)**
+</details>
 
 ## 目录
 
@@ -84,7 +103,7 @@ ros2 launch rosim_server server.launch.py
 src/            7 个 ROS 2 包（core / planning / server / rl / viewer / description / interfaces）
 rl_a/           RL 训练、场景采样、策略评测
 scripts/        编译、基准、诊断、发布脚本
-docs/           install.md（环境安装）· versions.lock（验证过的版本基线）
+docs/           install.md（环境安装）· versions.lock（版本基线）· images/（界面截图）
 docker/         可选容器环境
 ```
 

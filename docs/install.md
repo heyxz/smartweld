@@ -9,6 +9,49 @@
 
 ---
 
+## 快速路径（推荐，10~20 分钟）
+
+从零到"界面能打开、规划能解"，只需要这几条命令：
+
+```bash
+git clone https://github.com/heyxz/smartweld.git ~/smartweld
+cd ~/smartweld
+
+./scripts/bootstrap.sh --check     # 体检：列出缺什么（只读，安全）
+./scripts/bootstrap.sh --base      # 装 ROS 2 Humble + 编译工具（sudo）
+./scripts/bootstrap.sh --moveit    # 装 MoveIt 2（走 apt，几分钟）
+./scripts/bootstrap.sh --deps      # rosdep 装本项目依赖
+./scripts/bootstrap.sh --build     # colcon build
+./scripts/bootstrap.sh --verify    # 冒烟：起服务 → 规划一次 → 查关节状态
+```
+
+`--verify` 打印 `✅ 环境可用` 就算成功，浏览器打开 http://localhost:8765/ 即可。
+
+**MoveIt 用 apt 还是源码？**
+
+| 方式 | 命令 | 版本 | 时间 | 什么时候用 |
+| --- | --- | --- | --- | --- |
+| apt（默认） | `--moveit` | 2.5.10-1jammy | 几分钟 | 绝大多数情况 |
+| 源码 | `--moveit --from-source` | 2.5.9 | 30~60 分钟，约 10 GB | 需要严格复现开发机版本 |
+
+两种都跑通过本项目；`docs/versions.lock` 记录的是开发机的完整版本基线。
+
+**实测记录（2026-11-03）**：在一台**没有源码编译过 MoveIt** 的机器上按这条路径验证——
+
+```
+apt 装 ros-humble-moveit    → 2.5.10-1jammy
+只 source /opt/ros/humble   → moveit_core = /opt/ros/humble
+colcon build --symlink-install → 7 个包，4 分 52 秒
+bash scripts/verify_install.sh → 起服务 / 规划一次 / 关节状态  全部通过
+```
+
+同一条路径在开发机上（源码版 2.5.9）也通过，说明 2.5.9 与 2.5.10 对本项目都兼容。
+
+**RL 分支是可选件**：核心功能（导入工件、建焊缝、规划、执行、界面）不需要 Python 的
+RL 依赖（`.pylibs` 约 5.3 GB）。想跑 `rl` / `hybrid` 规划器再按第 7 节安装。
+
+---
+
 ## 0. 第一步永远是体检
 
 ```bash
